@@ -19,14 +19,22 @@ contract BiscuitRouter {
         biscuit = IERC20(_biscuit);
     }
 
-    function move(uint256 _amount, address to) external {
+    function move(
+        uint256 _amount, 
+        address to,
+        address signer,
+        bytes calldata sig, 
+        uint256 nonce, 
+        string calldata message
+    ) external {
         require(_amount > 0, "Amount must be greater than 0");
-        require(_getDeposit()[msg.sender] >= _amount, "Insufficient balance");
+        require(nonce == _getNonce()[signer], "Invalid nonce");
+        require(verify(signer, keccak256(abi.encodePacked(_amount, to, signer, address(this), nonce, message)), sig), "Invalid signature");
         _getDeposit()[msg.sender] -= _amount;
         _getDeposit()[to] += _amount;
     }
 
-    function withdrawWithSig(
+    function withdraw(
         uint256 _amount,
         address signer,
         bytes calldata sig,
@@ -37,11 +45,8 @@ contract BiscuitRouter {
         require(nonce == _getNonce()[signer], "Invalid nonce");
         require(verify(signer, keccak256(abi.encodePacked(_amount, signer, address(this), nonce, message)), sig), "Invalid signature");
         require(_getDeposit()[signer] >= _amount, "Insufficient balance");
-
         _getDeposit()[signer] -= _amount;
         biscuit.transfer(signer, _amount);
-        _getNonce()[signer]++;
-
         emit Withdraw(signer, _amount);
     }
 
@@ -74,8 +79,12 @@ contract BiscuitRouter {
         }
     }
 
-    function verify(address signer, bytes32 messageHash, bytes memory signature) internal pure returns (bool) {
+    function verify(address signer, bytes32 messageHash, bytes memory signature) internal returns (bool) {
         address recoveredAddress = messageHash.recover(signature);
-        return (recoveredAddress == signer);
+        bool result = recoveredAddress == signer;
+        if(result) {
+            _getNonce()[signer]++;
+        }
+        return result;
     }
 }
